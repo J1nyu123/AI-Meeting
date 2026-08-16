@@ -74,7 +74,7 @@ describe("useAudioTranscriptionController browser provider", () => {
       });
     });
     expect(result.current.transcription).toBe("Redis 保存会话状态");
-    act(() => result.current.stopRecording());
+    await act(async () => result.current.stopRecording());
     expect(recognition?.stop).toHaveBeenCalledTimes(1);
   });
 

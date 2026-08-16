@@ -4,11 +4,20 @@ export type TranscriptionState = {
   status: "idle" | "listening" | "restarting" | "unsupported" | "error";
 };
 
+export type TranscriptionSnapshot = {
+  displayText: string;
+  committedText: string;
+  liveText: string;
+  revision: number;
+  status: "running" | "final" | "error";
+};
+
 export type TranscriptionCallbacks = {
   onPartial: (text: string) => void;
   onFinal: (text: string) => void;
   onStateChange?: (state: TranscriptionState["status"]) => void;
   onError: (message: string) => void;
+  onSnapshot?: (snapshot: TranscriptionSnapshot) => void;
 };
 
 export interface TranscriptionProvider {

@@ -55,7 +55,7 @@ export function useAudioTranscriptionTransport({
 
     disconnect();
 
-    const transport = new AudioToTextWebSocket(userId);
+    const transport = new AudioToTextWebSocket();
     transport.onConnected = () => {
       transport.sendCommand("start_transcription");
     };
@@ -70,7 +70,11 @@ export function useAudioTranscriptionTransport({
     };
 
     transportRef.current = transport;
-    transport.connect();
+    void transport.connect().catch((error) => {
+      onErrorRef.current(
+        error instanceof Error ? error.message : "远程语音识别连接失败",
+      );
+    });
   }, [disconnect, userId]);
 
   const sendAudioChunk = useCallback((data: ArrayBuffer) => {

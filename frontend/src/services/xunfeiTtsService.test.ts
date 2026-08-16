@@ -27,4 +27,14 @@ describe("xunfeiTtsService", () => {
     expect(result.completed).toBe(true);
     expect(result.success).toBe(true);
   });
+
+  it("prefers the authenticated application audio path", () => {
+    const result = normalizeTaskResult({
+      taskStatus: "5",
+      code: 0,
+      audioPath: "/api/v1/media/tts/tasks/task-1/audio",
+      audioUrl: "https://provider.example/audio",
+    });
+    expect(result.audioUrl).toBe("/api/v1/media/tts/tasks/task-1/audio");
+  });
 });

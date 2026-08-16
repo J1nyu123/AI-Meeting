@@ -1,6 +1,6 @@
 # 实施进度
 
-更新时间：2026-08-15
+更新时间：2026-08-16
 
 计算：`总进度 = Σ(模块权重 × 已完成验收项/验收项总数)`。结构、主路径、异常测试、验收证据分别对应 25/50/75/100%。
 
@@ -19,6 +19,15 @@
 当前实施总进度：**98/100**（精确加权值 97.5）。最终验收仍受 Redis 故障注入和 80% 覆盖率门槛约束。
 
 ## 更新记录
+
+### 2026-08-16：讯飞实时 ASR 与长文本 TTS
+
+- 本次完成：新增一次性 Ticket 鉴权 WebSocket、讯飞 AST 签名与分片组装、有界音频队列和单用户租约；新增幂等 TTS 任务、用户归属、状态轮询、SSRF 防护和鉴权流式音频代理；前端改为讯飞优先并保留浏览器和文字降级。
+- 对应依据：Java `XunfeiAudioService`、`AudioTranscriptionWebSocketHandler`、`XunfeiTtsController`、`XunfeiLongTextTtsService` 及原前端媒体服务，详见 `REFERENCE_MAP.md`；Ticket、租约、鉴权流和安全日志为 Go 版新增。
+- 自动验证：`scripts/verify.ps1` 的 Go build、全量 test、vet、Compose 配置和 75 条引用检查全部通过；前端 `npm run check` 的 lint、类型检查、28 个测试文件共 111 项测试及 `npm run build` 全部通过。
+- 进度：现有 P7/P8 已为 100%，不重复增加总进度。
+- 真实烟测：讯飞长文本 TTS 创建返回 202、任务完成状态为 5/业务码 0，鉴权音频代理返回 200；实时 ASR 三次取得 Ticket（201）并完成 WebSocket Upgrade（101，连接持续约 4～9 秒）。日志按隐私约束不保存转写正文和上游原始响应。
+- 遗留风险：真实 ASR 已确认远程会话建立，但仍需通过浏览器 WebSocket `transcription/final` 消息或讯飞控制台确认最终识别内容；生产环境需使用同源反向代理或配置允许的 WebSocket Origin。
 
 ### 2026-08-15：建立实施依据
 

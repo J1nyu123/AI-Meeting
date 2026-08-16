@@ -14,6 +14,7 @@ import (
 	"ai-meeting-go/internal/interview"
 	"ai-meeting-go/internal/job"
 	"ai-meeting-go/internal/llm"
+	"ai-meeting-go/internal/media"
 	"ai-meeting-go/internal/platform/httpx"
 	"ai-meeting-go/internal/report"
 	"ai-meeting-go/internal/resume"
@@ -54,11 +55,15 @@ func main() {
 	interviewHandler := interview.NewHandler(interviewService, db)
 	reportService := report.NewService(db)
 	reportHandler := report.NewHandler(reportService, db)
+	mediaStore := media.NewRedisASRStore(redisClient)
+	asrHandler := &media.ASRHandler{Tickets: mediaStore, Leases: mediaStore, Provider: &media.XunfeiASTClient{AppID: cfg.XunfeiAppID, APIKey: cfg.XunfeiAPIKey, APISecret: cfg.XunfeiAPISecret}, Enabled: cfg.MediaASREnabled, MaxDuration: cfg.MediaASRMaxDuration, IdleTimeout: cfg.MediaASRIdleTimeout}
+	ttsProvider := &media.XunfeiTTSClient{AppID: cfg.XunfeiAppID, APIKey: cfg.XunfeiAPIKey, APISecret: cfg.XunfeiAPISecret}
+	ttsHandler := &media.TTSHandler{Service: media.NewTTSService(db, ttsProvider, cfg.MediaTTSEnabled, cfg.MediaTTSTimeout), Proxy: &media.SecureAudioProxy{}}
 	publisher := job.NewPublisher(asynq.RedisClientOpt{Addr: cfg.RedisAddr, Password: cfg.RedisPassword})
 	defer publisher.Close()
 	jobHandler := job.NewHandler(db, fileStorage, publisher, redisClient, cfg.MaxResumeBytes)
 	r := gin.New()
-	r.Use(httpx.RequestMiddleware(), httpx.Recovery(), cors.New(cors.Config{AllowOrigins: []string{"http://localhost:5173"}, AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}, AllowHeaders: []string{"Authorization", "Content-Type", "Idempotency-Key", "Last-Event-ID", "X-Request-ID"}, ExposeHeaders: []string{"X-Request-ID", "X-Degraded-Mode"}, AllowCredentials: true, MaxAge: 12 * time.Hour}))
+	r.Use(httpx.RequestMiddleware(), httpx.Recovery(), cors.New(cors.Config{AllowOrigins: []string{"http://localhost:5173"}, AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}, AllowHeaders: []string{"Authorization", "Content-Type", "Idempotency-Key", "Last-Event-ID", "Range", "X-Request-ID"}, ExposeHeaders: []string{"X-Request-ID", "X-Degraded-Mode", "Content-Length", "Content-Range", "Accept-Ranges"}, AllowCredentials: true, MaxAge: 12 * time.Hour}))
 	r.GET("/health/live", func(c *gin.Context) { httpx.OK(c, gin.H{"status": "UP"}) })
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	r.GET("/health/ready", func(c *gin.Context) {
@@ -72,10 +77,16 @@ func main() {
 		httpx.OK(c, gin.H{"status": "UP"})
 	})
 	v1 := r.Group("/api/v1")
+	v1.GET("/media/asr/ws", asrHandler.WebSocket)
 	auth.RegisterRoutes(v1.Group("/auth"), authHandler)
 	secured := v1.Group("")
 	secured.Use(authHandler.Middleware())
 	secured.GET("/auth/me", authHandler.Me)
+	secured.POST("/media/asr/tickets", asrHandler.IssueTicket)
+	secured.POST("/media/tts/tasks", ttsHandler.Create)
+	secured.GET("/media/tts/tasks/:taskId", ttsHandler.Get)
+	secured.GET("/media/tts/tasks/:taskId/audio", ttsHandler.Audio)
+	secured.POST("/media/tts/synthesize", ttsHandler.Synthesize)
 	secured.POST("/interviews", interviewHandler.Create)
 	secured.GET("/interviews", interviewHandler.List)
 	secured.DELETE("/interviews/:id", interviewHandler.Delete)

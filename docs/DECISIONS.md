@@ -16,9 +16,9 @@ Access Token 短期有效；Refresh Token 使用随机 JTI 和 family，服务�
 
 先建立带租约的幂等尝试，再调用 AI，最后使用短事务和会话版本号提交。Redis 不可用时可能产生重复模型调用，但数据库唯一约束保证不重复推进和计分。
 
-## ADR-004：浏览器语音 Provider
+## ADR-004：讯飞优先、浏览器语音降级
 
-页面依赖 `TranscriptionProvider`，首版为 Web Speech API，未来远程 ASR 通过相同事件协议接入，不改变答题 API。文字输入永久可用。
+页面依赖 `TranscriptionProvider`。默认使用 Go 鉴权 WebSocket 代理讯飞 AST，失败时降级 Web Speech API，文字输入永久可用。浏览器先用 Access Token 申请 60 秒一次性 Ticket，WebSocket URL 不携带 JWT；Ticket 和单用户连接租约依赖 Redis并在 Redis 故障时失败关闭。
 
 ## ADR-005：异步简历分析
 
@@ -28,9 +28,13 @@ API 保存文件与任务记录后投递 Asynq。Worker 幂等处理，状态落
 
 使用 `golang-migrate` 和独立 `cmd/migrate`。Compose 中的一次性迁移服务成功后 API 与 Worker 才启动；不依赖 MySQL 仅首次执行的初始化目录，因此后续可以追加迁移版本。
 
-## ADR-007：题目播报使用浏览器 TTS
+## ADR-007：题目播报使用鉴权长文本 TTS
 
-题目和追问的播放按钮优先使用浏览器 `speechSynthesis`，无需模型或语音服务密钥；远程音频播放链路作为不支持浏览器 TTS 时的可替换边界保留。
+题目和追问优先创建讯飞长文本 TTS 任务，同一用户和 `Idempotency-Key` 只创建一次。前端只取得本站 `/audio` 路径；Go 校验用户归属后重新查询上游 URL，仅对精确可信的讯飞下载主机执行 HTTP 到 HTTPS 升级，过滤 DNS 结果中的私有地址、固定连接剩余安全地址并拒绝重定向，再流式代理音频。远程失败时降级浏览器 `speechSynthesis`，用户主动取消不触发降级。
+
+## ADR-010：媒体内容最小化保存
+
+不保存录音、TTS 原文、上游音频地址或音频二进制。MySQL 仅保存 TTS 任务归属、幂等键、状态和格式；日志不记录转写正文、合成正文、签名和下载地址。
 
 ## ADR-008：讯飞面试 Agent 采用三个顶层工作流调用
 

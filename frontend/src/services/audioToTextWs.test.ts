@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/authToken", () => ({
-  getAuthToken: vi.fn(() => "token"),
-}));
-
 vi.mock("@/config/env", () => ({
+  resolveAppEnv: vi.fn(() => ({
+    apiBaseUrl: "/api",
+    apiTarget: "http://localhost:8080",
+    wsBaseUrl: "ws://localhost:8080",
+  })),
   resolveApiBaseUrl: vi.fn(() => "/api"),
   resolveRuntimeWsBaseUrl: vi.fn(() => "ws://localhost:8080"),
   resolveWsBaseUrl: vi.fn(() => "ws://localhost:8080"),
@@ -16,7 +17,7 @@ describe("AudioToTextWebSocket message handling", () => {
   let instance: AudioToTextWebSocket;
 
   beforeEach(() => {
-    instance = new AudioToTextWebSocket("tester");
+    instance = new AudioToTextWebSocket();
   });
 
   it("ignores out-of-order transcription packets", () => {
@@ -29,8 +30,8 @@ describe("AudioToTextWebSocket message handling", () => {
       }
     ).handleMessage({
       type: "transcription",
-      data: "最新快照",
-      timestamp: 20,
+      displayText: "最新快照",
+      revision: 20,
     });
     (
       instance as unknown as {
@@ -38,8 +39,8 @@ describe("AudioToTextWebSocket message handling", () => {
       }
     ).handleMessage({
       type: "transcription",
-      data: "旧快照",
-      timestamp: 10,
+      displayText: "旧快照",
+      revision: 10,
     });
 
     expect(onTranscription).toHaveBeenCalledTimes(1);
@@ -52,8 +53,8 @@ describe("AudioToTextWebSocket message handling", () => {
 
     const message = {
       type: "transcription",
-      data: "重复快照",
-      timestamp: 30,
+      displayText: "重复快照",
+      revision: 30,
     };
     (
       instance as unknown as {
@@ -69,19 +70,26 @@ describe("AudioToTextWebSocket message handling", () => {
     expect(onTranscription).toHaveBeenCalledTimes(1);
   });
 
-  it("clears the current snapshot when the server starts a new transcription session", () => {
+  it("publishes a final atomic snapshot", () => {
     const onTranscription = vi.fn();
+    const onSnapshot = vi.fn();
     instance.onTranscription = onTranscription;
+    instance.onSnapshot = onSnapshot;
 
     (
       instance as unknown as {
         handleMessage: (message: Record<string, unknown>) => void;
       }
     ).handleMessage({
-      type: "transcription_started",
-      timestamp: 40,
+      type: "final",
+      displayText: "最终文本",
+      committedText: "最终文本",
+      liveText: "",
+      revision: 40,
     });
 
-    expect(onTranscription).toHaveBeenCalledWith("");
+    expect(onSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "final", committedText: "最终文本" }),
+    );
   });
 });

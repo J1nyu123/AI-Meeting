@@ -13,7 +13,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
 ![MySQL](https://img.shields.io/badge/MySQL-8.4-4479A1?logo=mysql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7.2-DC382D?logo=redis&logoColor=white)
-![Tests](https://img.shields.io/badge/Frontend_Tests-108_passed-brightgreen)
+![Tests](https://img.shields.io/badge/Frontend_Tests-111_passed-brightgreen)
 
 </div>
 
@@ -28,7 +28,7 @@ AI Meeting 是一个 Go + React 实现的 AI 模拟面试平台。候选人上�
     ↓
 PDF 简历上传 → 异步提取与出题 → SSE 进度通知
     ↓
-浏览器语音/文字回答 → 模型评分 → Go 规则裁决 → 动态追问
+讯飞/浏览器语音或文字回答 → 模型评分 → Go 规则裁决 → 动态追问
     ↓
 MySQL 权威状态 + Redis 热状态 → 刷新恢复与故障降级
     ↓
@@ -85,14 +85,13 @@ flowchart LR
 
 页面刷新后，前端使用 `/state` 返回的历史轮次整体重建对话，不依赖浏览器内存中的旧状态。Redis 不可用时，读取和答题链路可以降级到 MySQL，并通过 `X-Degraded-Mode: mysql` 标记降级模式。
 
-### 5. 可替换的浏览器语音能力
+### 5. 讯飞优先的可降级语音能力
 
-- `BrowserSpeechProvider` 使用浏览器 Web Speech API 提供语音转文字。
-- interim 文本只更新实时区域，final 文本才进入已确认内容。
-- final 片段经过相等、包含和最长前后缀重叠判断，减少重复转写。
-- 题目播放使用浏览器 `speechSynthesis`，不要求额外 TTS 密钥。
-- 权限拒绝、浏览器不支持或连续启动失败时自动保留文字输入。
-- 页面只依赖 `TranscriptionProvider`，未来接入远程 ASR 时无需修改答题 API。
+- 实时转写优先通过一次性 Ticket 连接 Go WebSocket，再由 Go 代理讯飞 AST。
+- AST 分片支持 `apd/rpl`、时间范围文本演进、乱序和标点去重，并以原子快照更新页面。
+- 题目播放优先使用讯飞长文本 TTS；音频必须登录鉴权并由 Go 流式代理，上游地址不会暴露给浏览器。
+- 讯飞不可用时依次降级到浏览器 Web Speech API / `speechSynthesis`，文字输入永久可用。
+- 录音、合成原文和音频文件均不落盘。
 
 ### 6. 从答题到报告的完整闭环
 
@@ -109,7 +108,9 @@ flowchart TB
   User["候选人 / Chrome / Edge"] --> Web["React 19 + TypeScript<br/>Vite 前端"]
 
   Web -->|"REST / SSE"| API["Go API<br/>Gin + JWT"]
-  Web --> Speech["Browser Speech API<br/>ASR / TTS"]
+  Web -->|"Ticket + PCM WebSocket"| Media["Go Media<br/>ASR / TTS 鉴权代理"]
+  Media --> XunfeiMedia["讯飞 AST / 长文本 TTS"]
+  Web -.降级.-> Speech["Browser Speech API<br/>ASR / TTS"]
 
   API --> Auth["认证服务<br/>Access / Refresh Token"]
   API --> Interview["面试应用服务<br/>状态机 / 幂等 / 追问"]
@@ -211,6 +212,8 @@ ASKING 工作流      → 根据简历、问题和回答生成追问内容
 | Asynq | 异步简历分析任务 |
 | golang-migrate | 版本化数据库迁移 |
 | JWT + bcrypt | 双 Token 认证和密码摘要 |
+| coder/websocket | 鉴权 ASR WebSocket 和讯飞 AST 双向音频链路 |
+| 讯飞 AST + 长文本 TTS | 实时语音转写和异步语音合成 |
 | slog + Prometheus | 结构化日志与指标 |
 | Poppler | PDF 文本提取 |
 
@@ -226,6 +229,7 @@ ASKING 工作流      → 根据简历、问题和回答生成追问内容
 | TanStack Query | 5.90，服务端状态和缓存 |
 | Tailwind CSS + Radix UI | 样式与无障碍组件原语 |
 | React PDF | 鉴权 PDF 预览 |
+| Web Audio + Web Speech API | PCM 麦克风采集及 ASR/TTS 降级 |
 | Vitest + Testing Library | 单元和组件测试 |
 
 ## 快速开始
@@ -236,6 +240,7 @@ ASKING 工作流      → 根据简历、问题和回答生成追问内容
 - Node.js 20+
 - npm 10+
 - Go 1.24+（仅宿主机开发和测试后端时需要）
+- Chrome 或 Edge（验证麦克风转写时需要授予麦克风权限）
 
 ### 1. 配置环境变量
 
@@ -245,7 +250,30 @@ ASKING 工作流      → 根据简历、问题和回答生成追问内容
 Copy-Item .env.example .env
 ```
 
-使用真实模型时编辑本机 `.env`。不要把真实 API Key 写入示例、代码、SQL、截图或文档。
+使用真实模型或讯飞媒体服务时编辑本机 `.env`。不要把真实 API Key 写入示例、代码、SQL、截图或文档。
+
+讯飞 ASR/TTS 使用独立于星辰 Agent 的 WebAPI 凭证：
+
+| 配置 | 必填条件 | 说明 |
+| --- | --- | --- |
+| `XUNFEI_APP_ID` | 启用远程语音 | 讯飞控制台 WebAPI APPID |
+| `XUNFEI_API_KEY` | 启用远程语音 | WebAPI 鉴权 APIKey |
+| `XUNFEI_API_SECRET` | 启用远程语音 | WebAPI 鉴权 APISecret |
+| `MEDIA_ASR_ENABLED` | 否 | 是否启用远程 ASR，默认 `true` |
+| `MEDIA_TTS_ENABLED` | 否 | 是否启用远程 TTS，默认 `true` |
+| `MEDIA_ASR_MAX_DURATION` | 否 | 单次 ASR 最长时间，默认 `15m` |
+| `MEDIA_ASR_IDLE_TIMEOUT` | 否 | ASR 空闲超时，默认 `45s` |
+| `MEDIA_TTS_TIMEOUT` | 否 | TTS 同步等待上限，默认 `90s` |
+
+服务地址已由后端固定，不需要在 `.env` 中填写 URL：
+
+| 能力 | 讯飞服务地址 |
+| --- | --- |
+| 长文本 TTS 创建 | `https://api-dx.xf-yun.com/v1/private/dts_create` |
+| 长文本 TTS 查询 | `https://api-dx.xf-yun.com/v1/private/dts_query` |
+| 实时 AST | `wss://office-api-ast-dx.iflyaisol.com/` |
+
+未配置凭证或远程调用失败时，前端自动尝试浏览器语音能力，文字输入始终可用。
 
 ### 2. 启动后端
 
@@ -290,10 +318,29 @@ npm run dev
 1. 注册或登录账号。
 2. 创建面试并上传文本型 PDF 简历。
 3. 等待简历分析和题目生成。
-4. 使用语音或文字回答，并人工确认转写结果。
+4. 使用讯飞实时转写、浏览器语音或文字回答，并人工确认转写结果。
 5. 查看评分反馈和动态追问。
 6. 刷新页面验证历史轮次与当前题恢复。
 7. 完成面试后查看雷达图和逐题报告。
+
+### 5. 验证讯飞媒体链路
+
+在浏览器开发者工具的 Network 面板过滤 `media/asr`：
+
+1. 点击麦克风后，`POST /api/v1/media/asr/tickets` 应返回 `201`。
+2. `/api/v1/media/asr/ws?ticket=...` 应完成 `101 Switching Protocols`。
+3. WebSocket Messages 中应出现二进制音频帧，以及 `transcription` 或 `final` 快照。
+4. 如果页面出现文字但没有上述两个请求，说明当前使用的是浏览器 Speech API 降级。
+
+点击问题播放按钮时，Network 面板应依次看到：
+
+```text
+POST /api/v1/media/tts/tasks                 202
+GET  /api/v1/media/tts/tasks/{taskId}        200
+GET  /api/v1/media/tts/tasks/{taskId}/audio  200 或 206
+```
+
+后端不会保存录音、转写正文、合成原文、音频文件或讯飞下载地址。排查时只记录请求状态、任务状态和错误码，不要提交 Ticket、Access Token 或讯飞密钥。
 
 也可以使用 PowerShell 演示脚本验证后端闭环：
 
@@ -325,7 +372,7 @@ npm run check
 npm run build
 ```
 
-当前前端共有 **27 个测试文件、108 项测试**，覆盖认证、请求鉴权、语音去重、TTS、简历任务、刷新恢复、报告数据和历史面试删除等关键链路。
+当前前端共有 **28 个测试文件、111 项测试**，覆盖认证、请求鉴权、语音去重、远程 ASR/TTS、简历任务、刷新恢复、报告数据和历史面试删除等关键链路。
 
 关键异常场景包括：
 
@@ -334,7 +381,8 @@ npm run build
 - 模型错误 JSON、越界分数、限流和超时。
 - 相同幂等键并发提交和同一道题并发推进。
 - Redis 状态过期、版本落后和完全不可用。
-- 浏览器重复 partial/final 事件和语音权限拒绝。
+- ASR Ticket 过期/重放、AST `apd/rpl`、乱序分片、重复快照和语音权限拒绝。
+- TTS 幂等任务、用户归属、状态轮询、HTTPS 音频代理和 SSRF 地址过滤。
 - SSE 断线重连后的最终状态补查。
 
 ## 目录结构
@@ -394,6 +442,17 @@ npm run build
 | `GET` | `/api/v1/interviews/{id}/report` | 报告与逐题回放 |
 | `GET` | `/api/v1/jobs/{jobId}` | 查询任务状态 |
 | `GET` | `/api/v1/jobs/{jobId}/events` | SSE 获取任务进度 |
+| `POST` | `/api/v1/media/asr/tickets` | 创建 60 秒一次性 ASR WebSocket Ticket |
+| `POST` | `/api/v1/media/tts/tasks` | 幂等创建长文本 TTS 任务 |
+| `GET` | `/api/v1/media/tts/tasks/{taskId}` | 查询本人 TTS 任务并刷新状态 |
+| `GET` | `/api/v1/media/tts/tasks/{taskId}/audio` | 鉴权流式播放已完成音频 |
+| `POST` | `/api/v1/media/tts/synthesize` | 创建任务并同步等待完成 |
+
+ASR WebSocket 使用一次性 Ticket，不在 URL 中携带 Access Token：
+
+```text
+GET /api/v1/media/asr/ws?ticket={one-time-ticket}
+```
 
 </details>
 
@@ -401,7 +460,7 @@ npm run build
 
 - 只解析文本型 PDF，暂不提供 OCR。
 - 不做摄像头、表情或仪态评分。
-- 当前语音能力依赖 Chrome / Edge 的 Web Speech API，没有接入云端 ASR 或长文本 TTS。
+- 云端 ASR/TTS 需要单独配置讯飞 `APP_ID`、`API_KEY`、`API_SECRET`；未配置或调用失败时使用浏览器语音降级。
 - 不提供通用聊天、Agent 管理后台或动态模型配置后台。
 - 未 MongoDB；MySQL 保存全部权威业务状态。
 - Mock 模式用于演示和测试，不代表真实模型质量。
@@ -409,6 +468,7 @@ npm run build
 ## 项目文档
 
 - [OpenAPI](docs/openapi.yaml)：HTTP 接口契约。
+- [ASR WebSocket 协议](docs/ASR_WEBSOCKET.md)：控制消息、音频格式和转写快照。
 - [架构决策](docs/DECISIONS.md)：认证、状态、任务、语音和模型接入决策。
 - [状态机](docs/STATE_MACHINE.md)：会话和答题状态流转。
 - [数据模型](docs/ER.md)：MySQL 实体关系。
