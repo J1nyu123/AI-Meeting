@@ -1,3 +1,5 @@
+name: ai-meeting-go
+
 services:
   mysql:
     image: mysql:8.4
@@ -57,6 +59,14 @@ services:
       XINGCHEN_ASKING_API_KEY: ${XINGCHEN_ASKING_API_KEY:-}
       XINGCHEN_ASKING_API_SECRET: ${XINGCHEN_ASKING_API_SECRET:-}
       XINGCHEN_ASKING_FLOW_ID: ${XINGCHEN_ASKING_FLOW_ID:-}
+      XUNFEI_APP_ID: ${XUNFEI_APP_ID:-}
+      XUNFEI_API_KEY: ${XUNFEI_API_KEY:-}
+      XUNFEI_API_SECRET: ${XUNFEI_API_SECRET:-}
+      MEDIA_ASR_ENABLED: ${MEDIA_ASR_ENABLED:-true}
+      MEDIA_TTS_ENABLED: ${MEDIA_TTS_ENABLED:-true}
+      MEDIA_ASR_MAX_DURATION: ${MEDIA_ASR_MAX_DURATION:-15m}
+      MEDIA_ASR_IDLE_TIMEOUT: ${MEDIA_ASR_IDLE_TIMEOUT:-45s}
+      MEDIA_TTS_TIMEOUT: ${MEDIA_TTS_TIMEOUT:-90s}
     depends_on:
       mysql: { condition: service_healthy }
       redis: { condition: service_healthy }

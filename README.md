@@ -85,14 +85,13 @@ flowchart LR
 
 页面刷新后，前端使用 `/state` 返回的历史轮次整体重建对话，不依赖浏览器内存中的旧状态。Redis 不可用时，读取和答题链路可以降级到 MySQL，并通过 `X-Degraded-Mode: mysql` 标记降级模式。
 
-### 5. 可替换的浏览器语音能力
+### 5. 讯飞优先的可降级语音能力
 
-- `BrowserSpeechProvider` 使用浏览器 Web Speech API 提供语音转文字。
-- interim 文本只更新实时区域，final 文本才进入已确认内容。
-- final 片段经过相等、包含和最长前后缀重叠判断，减少重复转写。
-- 题目播放使用浏览器 `speechSynthesis`，不要求额外 TTS 密钥。
-- 权限拒绝、浏览器不支持或连续启动失败时自动保留文字输入。
-- 页面只依赖 `TranscriptionProvider`，未来接入远程 ASR 时无需修改答题 API。
+- 实时转写优先通过一次性 Ticket 连接 Go WebSocket，再由 Go 代理讯飞 AST。
+- AST 分片支持 `apd/rpl`、时间范围文本演进、乱序和标点去重，并以原子快照更新页面。
+- 题目播放优先使用讯飞长文本 TTS；音频必须登录鉴权并由 Go 流式代理，上游地址不会暴露给浏览器。
+- 讯飞不可用时依次降级到浏览器 Web Speech API / `speechSynthesis`，文字输入永久可用。
+- 录音、合成原文和音频文件均不落盘。
 
 ### 6. 从答题到报告的完整闭环
 
@@ -109,7 +108,9 @@ flowchart TB
   User["候选人 / Chrome / Edge"] --> Web["React 19 + TypeScript<br/>Vite 前端"]
 
   Web -->|"REST / SSE"| API["Go API<br/>Gin + JWT"]
-  Web --> Speech["Browser Speech API<br/>ASR / TTS"]
+  Web -->|"Ticket + PCM WebSocket"| Media["Go Media<br/>ASR / TTS 鉴权代理"]
+  Media --> XunfeiMedia["讯飞 AST / 长文本 TTS"]
+  Web -.降级.-> Speech["Browser Speech API<br/>ASR / TTS"]
 
   API --> Auth["认证服务<br/>Access / Refresh Token"]
   API --> Interview["面试应用服务<br/>状态机 / 幂等 / 追问"]
@@ -401,7 +402,7 @@ npm run build
 
 - 只解析文本型 PDF，暂不提供 OCR。
 - 不做摄像头、表情或仪态评分。
-- 当前语音能力依赖 Chrome / Edge 的 Web Speech API，没有接入云端 ASR 或长文本 TTS。
+- 云端 ASR/TTS 需要单独配置讯飞 `APP_ID`、`API_KEY`、`API_SECRET`；未配置或调用失败时使用浏览器语音降级。
 - 不提供通用聊天、Agent 管理后台或动态模型配置后台。
 - 未 MongoDB；MySQL 保存全部权威业务状态。
 - Mock 模式用于演示和测试，不代表真实模型质量。

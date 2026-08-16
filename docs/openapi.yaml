@@ -15,6 +15,35 @@ components:
         data: {}
         requestId: { type: string }
 paths:
+  /media/asr/tickets:
+    post:
+      summary: Create a one-time authenticated ASR WebSocket ticket
+      security: [{ bearerAuth: [] }]
+      responses: { "201": { description: Ticket, expiry and WebSocket path }, "503": { description: Redis or ASR ticket service unavailable } }
+  /media/tts/tasks:
+    post:
+      summary: Create an idempotent long-text TTS task
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 8, maxLength: 128 } }]
+      responses: { "202": { description: Public task state without provider id or URL } }
+  /media/tts/tasks/{taskId}:
+    get:
+      summary: Query an owned TTS task and refresh provider status
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: taskId, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: Public task state }, "404": { description: Task not found or not owned } }
+  /media/tts/tasks/{taskId}/audio:
+    get:
+      summary: Stream owned completed TTS audio through an authenticated proxy
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: taskId, in: path, required: true, schema: { type: string } }, { name: Range, in: header, required: false, schema: { type: string } }]
+      responses: { "200": { description: Audio stream }, "206": { description: Partial audio stream }, "409": { description: Audio not ready } }
+  /media/tts/synthesize:
+    post:
+      summary: Create a TTS task and wait for completion
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 8, maxLength: 128 } }]
+      responses: { "200": { description: Completed public task }, "504": { description: Wait timeout } }
   /auth/register:
     post: { summary: Register, responses: { "201": { description: Created } } }
   /auth/login:

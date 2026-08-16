@@ -1,242 +1,63 @@
-import { getAuthToken } from "@/lib/authToken";
-import {
-  resolveApiBaseUrl,
-  resolveRuntimeWsBaseUrl,
-  resolveWsBaseUrl,
-} from "@/config/env";
-import {
-  resolveAudioTranscriptionEvent,
-  type AudioToTextIncomingMessage,
-} from "@/lib/audioTranscription";
+import service from "@/lib/request";
+import { resolveApiBaseUrl, resolveRuntimeWsBaseUrl, resolveWsBaseUrl } from "@/config/env";
+import type { TranscriptionSnapshot } from "@/features/transcription/types";
+
+type TicketResponse = { ticket: string; expiresAt: string; websocketUrl: string };
+type ASRMessage = Partial<TranscriptionSnapshot> & { type?: string; code?: string; message?: string; revision?: number };
 
 export class AudioToTextWebSocket {
   private ws: WebSocket | null = null;
-  private url: string;
   private pingInterval: ReturnType<typeof setInterval> | null = null;
   private pendingBinaryQueue: Array<ArrayBuffer | Blob> = [];
-  private readonly maxPendingBinaryChunks = 24;
-  private hasOpened = false;
-  private lastMessageTimestamp = 0;
+  private readonly maxPendingBinaryChunks = 64;
+  private lastRevision = 0;
   private lastMessageKey: string | null = null;
-
+  public onSnapshot?: (snapshot: TranscriptionSnapshot) => void;
   public onTranscription?: (text: string) => void;
   public onFinal?: (text: string) => void;
   public onError?: (error: string) => void;
   public onConnected?: () => void;
   public onDisconnected?: () => void;
 
-  constructor(userId: string) {
-    this.url = this.buildWebSocketUrl(userId);
-  }
-
-  private resolveConfiguredWebSocketBaseUrl() {
-    return resolveWsBaseUrl(import.meta.env.VITE_WS_BASE_URL);
-  }
-
-  private buildWebSocketUrl(userId: string) {
-    const wsBase = this.resolveWebSocketBaseUrl();
+  async connect() {
+    if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) return;
+    const ticket = await service.post<TicketResponse>("/v1/media/asr/tickets");
+    const wsBase = resolveRuntimeWsBaseUrl(window.location, resolveWsBaseUrl(import.meta.env.VITE_WS_BASE_URL));
     const apiBase = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
-    const path = `${apiBase}/xunzhi/v1/xunfei/audio-to-text/${encodeURIComponent(userId)}`;
-    const token = getAuthToken();
-
-    if (!token) {
-      return `${wsBase}${path}`;
-    }
-
-    const query = new URLSearchParams();
-    query.set("token", token);
-    return `${wsBase}${path}?${query.toString()}`;
-  }
-
-  private resolveWebSocketBaseUrl() {
-    const configuredWsBase = this.resolveConfiguredWebSocketBaseUrl();
-    return resolveRuntimeWsBaseUrl(window.location, configuredWsBase);
-  }
-
-  connect() {
-    if (
-      this.ws &&
-      (this.ws.readyState === WebSocket.CONNECTING ||
-        this.ws.readyState === WebSocket.OPEN)
-    ) {
-      return;
-    }
-
-    this.ws = new WebSocket(this.url);
-    this.resetMessageCursor();
-
-    this.ws.onopen = () => {
-      console.log("WebSocket Connected");
-      this.hasOpened = true;
-      this.flushPendingBinaryQueue();
-      this.startPing();
-    };
-
-    this.ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data) as AudioToTextIncomingMessage;
-        this.handleMessage(data);
-      } catch (error) {
-        console.error("Failed to parse WS message", error);
-      }
-    };
-
-    this.ws.onerror = (error) => {
-      console.error("WebSocket Error", error);
-      this.onError?.("WebSocket connection error");
-    };
-
-    this.ws.onclose = (event) => {
-      console.warn("WebSocket Disconnected", {
-        code: event.code,
-        reason: event.reason,
-        wasClean: event.wasClean,
-      });
-      this.stopPing();
-      if (!this.hasOpened && event.code !== 1000) {
-        const details = [event.code ? `code=${event.code}` : null, event.reason]
-          .filter(Boolean)
-          .join(", ");
-        this.onError?.(
-          details
-            ? `WebSocket closed before ready: ${details}`
-            : "WebSocket closed before ready",
-        );
-      }
-      this.onDisconnected?.();
-      this.ws = null;
-      this.hasOpened = false;
-    };
-  }
-
-  private handleMessage(data: AudioToTextIncomingMessage) {
-    const event = resolveAudioTranscriptionEvent(data);
-    if (!this.shouldApplyEvent(data, event)) {
-      return;
-    }
-
-    switch (event.kind) {
-      case "reset":
-        this.onTranscription?.("");
-        break;
-      case "replace":
-        this.onTranscription?.(event.text);
-        break;
-      case "archive":
-        this.onFinal?.(event.text);
-        break;
-      case "connected":
-        this.onConnected?.();
-        break;
-      case "control":
-      case "heartbeat":
-        break;
-      case "error":
-        this.onError?.(event.message);
-        break;
-      case "unknown":
-        console.warn("Unknown message type:", event.type);
-        break;
-    }
-  }
-
-  private startPing() {
-    this.stopPing();
-    this.pingInterval = setInterval(() => {
-      this.sendCommand("ping");
-    }, 15000);
-  }
-
-  private stopPing() {
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
-      this.pingInterval = null;
-    }
-  }
-
-  sendCommand(
-    type: "ping" | "start_transcription" | "stop_transcription" | "get_status",
-  ) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type }));
-    }
-  }
-
-  sendAudio(data: Blob | ArrayBuffer) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(data);
-    } else if (this.ws?.readyState === WebSocket.CONNECTING) {
-      if (this.pendingBinaryQueue.length >= this.maxPendingBinaryChunks) {
-        this.pendingBinaryQueue.shift();
-      }
-      this.pendingBinaryQueue.push(data);
-    } else {
-      console.warn("Cannot send audio: WebSocket is not open");
-    }
-  }
-
-  disconnect() {
-    this.stopPing();
-    this.pendingBinaryQueue = [];
-    this.resetMessageCursor();
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
-  }
-
-  private flushPendingBinaryQueue() {
-    if (
-      !this.ws ||
-      this.ws.readyState !== WebSocket.OPEN ||
-      this.pendingBinaryQueue.length === 0
-    ) {
-      return;
-    }
-    this.pendingBinaryQueue.forEach((chunk) => {
-      this.ws?.send(chunk);
+    const serverPath = ticket.websocketUrl?.trim();
+    const path = serverPath ? `${apiBase}${serverPath.replace(/^\/api/, "")}` : `${apiBase}/v1/media/asr/ws?ticket=${encodeURIComponent(ticket.ticket)}`;
+    this.resetCursor();
+    await new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(`${wsBase}${path}`);
+      this.ws = ws;
+      let opened = false;
+      let ready = false;
+      const readyTimer = window.setTimeout(() => { ws.close(1000, "handshake timeout"); reject(new Error("远程语音识别握手超时")); }, 10_000);
+      ws.onopen = () => { opened = true; this.startPing(); };
+      ws.onmessage = (event) => { try { const message = JSON.parse(String(event.data)) as ASRMessage; this.handleMessage(message); if (message.type === "connected" && !ready) { ready = true; window.clearTimeout(readyTimer); this.flushPendingBinaryQueue(); resolve(); } } catch { this.onError?.("语音识别返回了无效数据"); } };
+      ws.onerror = () => { if (!opened) reject(new Error("无法连接远程语音识别")); this.onError?.("远程语音识别连接异常"); };
+      ws.onclose = (event) => { window.clearTimeout(readyTimer); this.stopPing(); if (!ready) reject(new Error(event.reason || "远程语音识别连接失败")); this.ws = null; this.onDisconnected?.(); };
     });
-    this.pendingBinaryQueue = [];
   }
 
-  private resetMessageCursor() {
-    this.lastMessageTimestamp = 0;
-    this.lastMessageKey = null;
+  private handleMessage(message: ASRMessage) {
+    if (message.type === "connected") { this.onConnected?.(); return; }
+    if (message.type === "error") { this.onError?.(message.message || message.code || "语音识别异常"); return; }
+    if (message.type !== "transcription" && message.type !== "final") return;
+    const revision = Number(message.revision || 0);
+    const key = `${message.type}:${revision}:${message.displayText || ""}`;
+    if ((revision > 0 && revision <= this.lastRevision) || key === this.lastMessageKey) return;
+    if (revision > 0) this.lastRevision = revision;
+    this.lastMessageKey = key;
+    const snapshot: TranscriptionSnapshot = { displayText: message.displayText || "", committedText: message.committedText || "", liveText: message.liveText || "", revision, status: message.type === "final" ? "final" : "running" };
+    this.onSnapshot?.(snapshot);
+    if (snapshot.status === "final") this.onFinal?.(snapshot.committedText); else this.onTranscription?.(snapshot.displayText);
   }
-
-  private shouldApplyEvent(
-    message: AudioToTextIncomingMessage,
-    event: ReturnType<typeof resolveAudioTranscriptionEvent>,
-  ) {
-    const text =
-      "text" in event
-        ? event.text
-        : "message" in event
-          ? event.message
-          : "";
-    const nextKey = `${event.kind}:${message.type ?? ""}:${text}`;
-    const nextTimestamp =
-      typeof message.timestamp === "number" ? message.timestamp : null;
-
-    if (nextTimestamp !== null) {
-      if (nextTimestamp < this.lastMessageTimestamp) {
-        return false;
-      }
-      if (
-        nextTimestamp === this.lastMessageTimestamp &&
-        nextKey === this.lastMessageKey
-      ) {
-        return false;
-      }
-      this.lastMessageTimestamp = nextTimestamp;
-      this.lastMessageKey = nextKey;
-      return true;
-    }
-
-    if (nextKey === this.lastMessageKey) {
-      return false;
-    }
-    this.lastMessageKey = nextKey;
-    return true;
-  }
+  private startPing() { this.stopPing(); this.pingInterval = setInterval(() => this.sendCommand("ping"), 15_000); }
+  private stopPing() { if (this.pingInterval) clearInterval(this.pingInterval); this.pingInterval = null; }
+  sendCommand(type: "ping" | "start_transcription" | "stop_transcription" | "get_status") { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type })); }
+  sendAudio(data: Blob | ArrayBuffer) { if (this.ws?.readyState === WebSocket.OPEN) { this.ws.send(data); return; } if (this.ws?.readyState === WebSocket.CONNECTING) { if (this.pendingBinaryQueue.length >= this.maxPendingBinaryChunks) throw new Error("语音缓冲区已满，请稍后重试"); this.pendingBinaryQueue.push(data); } }
+  disconnect() { this.stopPing(); this.pendingBinaryQueue = []; this.resetCursor(); this.ws?.close(1000, "client stopped"); this.ws = null; }
+  private flushPendingBinaryQueue() { if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return; this.pendingBinaryQueue.forEach((chunk) => this.ws?.send(chunk)); this.pendingBinaryQueue = []; }
+  private resetCursor() { this.lastRevision = 0; this.lastMessageKey = null; }
 }

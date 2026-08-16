@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef } from "react";
 import type { ChatMessage } from "@/lib/chat";
 import type { SynthesizedTtsTask } from "@/hooks/audio/chatTtsPlayback.shared";
 import { normalizeBase64Audio } from "@/hooks/audio/chatTtsPlayback.shared";
+import { getAuthToken } from "@/lib/authToken";
 
 export function useChatTtsAudioCache() {
   const preparedObjectUrlMapRef = useRef(new Map<string, string>());
@@ -62,6 +63,9 @@ export function useChatTtsAudioCache() {
         method: "GET",
         mode: "cors",
         signal,
+        headers: {
+          Authorization: `Bearer ${getAuthToken() || ""}`,
+        },
       });
 
       if (!response.ok) {

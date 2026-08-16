@@ -89,20 +89,6 @@ export function useChatTtsPlayback(messages: ChatMessage[]) {
       setPlayingMessageId(null);
 
       try {
-        const browserProvider = browserTtsProviderRef.current;
-        if (browserProvider?.isSupported()) {
-          setLoadingMessageId(null);
-          setPlayingMessageId(messageId);
-          await browserProvider.speak(ttsText, {
-            lang: "zh-CN",
-            signal: controller.signal,
-          });
-          if (activeMessageIdRef.current === messageId) {
-            clearPlaybackState();
-          }
-          return;
-        }
-
         if (options?.userInitiated) {
           await primePlaybackFromGesture();
         }
@@ -132,7 +118,12 @@ export function useChatTtsPlayback(messages: ChatMessage[]) {
             ...INTERVIEW_QUESTION_TTS_REQUEST,
             text: ttsText,
           },
-          { signal: controller.signal },
+          {
+            signal: controller.signal,
+            idempotencyKey: options?.forceRefresh
+              ? `tts-${messageId}-${crypto.randomUUID()}`
+              : `tts-${message.tts.cacheKey?.trim() || messageId}`,
+          },
         );
         const objectUrl = await resolvePlayableAudioUrl(
           task,
@@ -153,6 +144,22 @@ export function useChatTtsPlayback(messages: ChatMessage[]) {
       } catch (error) {
         if (!isAbortError(error)) {
           console.error("Failed to play TTS audio:", error);
+          const browserProvider = browserTtsProviderRef.current;
+          if (browserProvider?.isSupported() && !controller.signal.aborted) {
+            setLoadingMessageId(null);
+            setPlayingMessageId(messageId);
+            try {
+              await browserProvider.speak(ttsText, {
+                lang: "zh-CN",
+                signal: controller.signal,
+              });
+            } finally {
+              if (activeMessageIdRef.current === messageId) {
+                clearPlaybackState();
+              }
+            }
+            return;
+          }
           if (
             error instanceof DOMException &&
             error.name === "NotAllowedError"

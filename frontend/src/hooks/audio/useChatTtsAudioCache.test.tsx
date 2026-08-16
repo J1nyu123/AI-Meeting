@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatTtsAudioCache } from "@/hooks/audio/useChatTtsAudioCache";
 import type { ChatMessage } from "@/lib/chat";
 
+vi.mock("@/lib/authToken", () => ({
+  getAuthToken: vi.fn(() => "access-token"),
+}));
+
 const createObjectUrlMock = vi.fn(() => "blob:tts-audio");
 const revokeObjectUrlMock = vi.fn();
 const fetchMock = vi.fn();
@@ -107,6 +111,9 @@ describe("useChatTtsAudioCache", () => {
       method: "GET",
       mode: "cors",
       signal: expect.any(AbortSignal),
+      headers: {
+        Authorization: "Bearer access-token",
+      },
     });
   });
 

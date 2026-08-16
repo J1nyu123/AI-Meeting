@@ -31,6 +31,14 @@ type Config struct {
 	XingChenAskingAPIKey        string
 	XingChenAskingAPISecret     string
 	XingChenAskingFlowID        string
+	XunfeiAppID                 string
+	XunfeiAPIKey                string
+	XunfeiAPISecret             string
+	MediaASREnabled             bool
+	MediaTTSEnabled             bool
+	MediaASRMaxDuration         time.Duration
+	MediaASRIdleTimeout         time.Duration
+	MediaTTSTimeout             time.Duration
 }
 
 func Load() (Config, error) {
@@ -64,6 +72,24 @@ func Load() (Config, error) {
 		XingChenAskingAPIKey:        os.Getenv("XINGCHEN_ASKING_API_KEY"),
 		XingChenAskingAPISecret:     os.Getenv("XINGCHEN_ASKING_API_SECRET"),
 		XingChenAskingFlowID:        os.Getenv("XINGCHEN_ASKING_FLOW_ID"),
+		XunfeiAppID:                 os.Getenv("XUNFEI_APP_ID"),
+		XunfeiAPIKey:                os.Getenv("XUNFEI_API_KEY"),
+		XunfeiAPISecret:             os.Getenv("XUNFEI_API_SECRET"),
+	}
+	if cfg.MediaASREnabled, err = strconv.ParseBool(env("MEDIA_ASR_ENABLED", "true")); err != nil {
+		return Config{}, fmt.Errorf("MEDIA_ASR_ENABLED: %w", err)
+	}
+	if cfg.MediaTTSEnabled, err = strconv.ParseBool(env("MEDIA_TTS_ENABLED", "true")); err != nil {
+		return Config{}, fmt.Errorf("MEDIA_TTS_ENABLED: %w", err)
+	}
+	if cfg.MediaASRMaxDuration, err = time.ParseDuration(env("MEDIA_ASR_MAX_DURATION", "15m")); err != nil {
+		return Config{}, fmt.Errorf("MEDIA_ASR_MAX_DURATION: %w", err)
+	}
+	if cfg.MediaASRIdleTimeout, err = time.ParseDuration(env("MEDIA_ASR_IDLE_TIMEOUT", "45s")); err != nil {
+		return Config{}, fmt.Errorf("MEDIA_ASR_IDLE_TIMEOUT: %w", err)
+	}
+	if cfg.MediaTTSTimeout, err = time.ParseDuration(env("MEDIA_TTS_TIMEOUT", "90s")); err != nil {
+		return Config{}, fmt.Errorf("MEDIA_TTS_TIMEOUT: %w", err)
 	}
 	if cfg.MySQLDSN == "" {
 		return Config{}, fmt.Errorf("MYSQL_DSN is required")

@@ -24,6 +24,7 @@ export type XunfeiTtsTaskResult = {
   message?: string;
   audioBase64?: string | null;
   audioUrl?: string | null;
+  audioPath?: string | null;
   pybufContent?: string | null;
   pybufUrl?: string | null;
   completed?: boolean;
@@ -32,6 +33,7 @@ export type XunfeiTtsTaskResult = {
 
 type RequestOptions = {
   signal?: AbortSignal;
+  idempotencyKey?: string;
 };
 
 const toTrimmedString = (value: unknown) => {
@@ -66,7 +68,10 @@ export const normalizeTaskResult = (
     toTrimmedString(payload.pybufContent) ??
     null;
   const audioUrl =
-    toTrimmedString(payload.audioUrl) ?? toTrimmedString(payload.pybufUrl) ?? null;
+    toTrimmedString(payload.audioPath) ??
+    toTrimmedString(payload.audioUrl) ??
+    toTrimmedString(payload.pybufUrl) ??
+    null;
   const completed =
     typeof payload.completed === "boolean"
       ? payload.completed
@@ -84,6 +89,7 @@ export const normalizeTaskResult = (
     message: toTrimmedString(payload.message),
     audioBase64,
     audioUrl,
+    audioPath: toTrimmedString(payload.audioPath) ?? null,
     pybufContent: toTrimmedString(payload.pybufContent) ?? null,
     pybufUrl: toTrimmedString(payload.pybufUrl) ?? null,
     completed,
@@ -102,15 +108,16 @@ export const xunfeiTtsService = {
     const response = await service.post<
       XunfeiTtsTaskResult,
       CreateXunfeiTtsTaskParams
-    >("/xunzhi/v1/xunfei/tts/tasks", params, {
+    >("/v1/media/tts/tasks", params, {
       signal: options?.signal,
+      headers: { "Idempotency-Key": options?.idempotencyKey || "" },
     });
     return normalizeTaskResult(response);
   },
 
   async queryTask(taskId: string, options?: RequestOptions) {
     const response = await service.get<XunfeiTtsTaskResult>(
-      `/xunzhi/v1/xunfei/tts/tasks/${encodeURIComponent(taskId)}`,
+      `/v1/media/tts/tasks/${encodeURIComponent(taskId)}`,
       {
         signal: options?.signal,
       },
@@ -122,29 +129,36 @@ export const xunfeiTtsService = {
     params: CreateXunfeiTtsTaskParams,
     options?: RequestOptions,
   ) {
-    const response = await service.post<
-      XunfeiTtsTaskResult,
-      CreateXunfeiTtsTaskParams
-    >("/xunzhi/v1/xunfei/tts/synthesize", params, {
-      signal: options?.signal,
-    });
-    const task = normalizeTaskResult(response);
-
-    if (!task.success || !task.completed) {
-      throw toTaskError(task, "TTS synthesis failed");
-    }
-
-    if (!task.audioBase64 && !task.audioUrl) {
-      throw toTaskError(task, "TTS synthesis completed without audio content");
-    }
-
-    return task;
+    return this.createTaskAndWait(params, options);
   },
 
   async createTaskAndWait(
     params: CreateXunfeiTtsTaskParams,
     options?: RequestOptions,
   ) {
-    return this.synthesize(params, options);
+    let task = await this.createTask(params, options);
+    const timeoutMs = Math.max(10, params.timeoutSeconds || 90) * 1000;
+    const intervalMs = Math.max(500, params.pollIntervalMs || 1500);
+    const deadline = Date.now() + timeoutMs;
+    while (!task.completed && Date.now() < deadline) {
+      await new Promise<void>((resolve, reject) => {
+        const timer = window.setTimeout(resolve, intervalMs);
+        options?.signal?.addEventListener(
+          "abort",
+          () => {
+            window.clearTimeout(timer);
+            reject(new DOMException("Aborted", "AbortError"));
+          },
+          { once: true },
+        );
+      });
+      if (!task.taskId) throw new Error("TTS task id is missing");
+      task = await this.queryTask(task.taskId, options);
+    }
+    if (!task.completed || !task.success) {
+      throw toTaskError(task, task.completed ? "TTS synthesis failed" : "TTS synthesis timed out");
+    }
+    if (!task.audioUrl) throw toTaskError(task, "TTS synthesis completed without audio content");
+    return task;
   },
 };
