@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS interview_reports;
+DROP TABLE IF EXISTS interview_turns;
+DROP TABLE IF EXISTS answer_attempts;
+DROP TABLE IF EXISTS interview_questions;
+DROP TABLE IF EXISTS analysis_jobs;
+DROP TABLE IF EXISTS resume_assets;
+DROP TABLE IF EXISTS interview_sessions;
+DROP TABLE IF EXISTS refresh_tokens;
+DROP TABLE IF EXISTS users;

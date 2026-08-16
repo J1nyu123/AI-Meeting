@@ -1,0 +1,67 @@
+openapi: 3.1.0
+info: { title: AI Meeting Go API, version: 1.0.0 }
+servers: [{ url: http://localhost:8080/api/v1 }]
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  schemas:
+    Envelope:
+      type: object
+      required: [success, code, data, requestId]
+      properties:
+        success: { type: boolean }
+        code: { type: string }
+        message: { type: [string, "null"] }
+        data: {}
+        requestId: { type: string }
+paths:
+  /auth/register:
+    post: { summary: Register, responses: { "201": { description: Created } } }
+  /auth/login:
+    post: { summary: Login and issue token pair, responses: { "200": { description: Token pair } } }
+  /auth/refresh:
+    post: { summary: Rotate refresh token, responses: { "200": { description: Rotated pair } } }
+  /auth/logout:
+    post: { summary: Revoke refresh token family, responses: { "200": { description: Logged out } } }
+  /auth/me:
+    get: { summary: Current user, security: [{ bearerAuth: [] }], responses: { "200": { description: User } } }
+  /interviews:
+    post: { summary: Create interview, security: [{ bearerAuth: [] }], responses: { "201": { description: Created } } }
+    get: { summary: List own interviews, security: [{ bearerAuth: [] }], responses: { "200": { description: Page } } }
+  /interviews/{id}/resume:
+    get:
+      summary: Preview the authenticated user's PDF
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: PDF document } }
+    post:
+      summary: Upload PDF and enqueue analysis
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, properties: { resume: { type: string, format: binary } } } } } }
+      responses: { "202": { description: Analysis job } }
+  /interviews/{id}:
+    delete:
+      summary: Delete an owned completed or failed interview
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Deleted session id }
+        "404": { description: Interview not found or not owned by current user }
+        "409": { description: Interview is not completed or failed }
+  /interviews/{id}/state:
+    get: { summary: Recover authoritative state, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { "200": { description: State } } }
+  /interviews/{id}/answers:
+    post:
+      summary: Submit current answer
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }, { name: Idempotency-Key, in: header, required: true, schema: { type: string } }]
+      responses: { "200": { description: Evaluation and next question }, "409": { description: Duplicate in progress or stale question } }
+  /interviews/{id}/finish:
+    post: { summary: Finish and generate report, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { "200": { description: Report } } }
+  /interviews/{id}/report:
+    get: { summary: Get report and replay, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { "200": { description: Report } } }
+  /jobs/{jobId}:
+    get: { summary: Get analysis job, security: [{ bearerAuth: [] }], responses: { "200": { description: Job } } }
+  /jobs/{jobId}/events:
+    get: { summary: Stream analysis status, security: [{ bearerAuth: [] }], responses: { "200": { description: text/event-stream } } }

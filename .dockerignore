@@ -1,0 +1,15 @@
+.cache/
+.git/
+.github/
+.env
+.env.*
+!.env.example
+data/
+uploads/
+*.log
+coverage.out
+frontend/node_modules/
+frontend/dist/
+frontend/.cache/
+frontend/coverage/
+frontend/*.log

@@ -1,0 +1,55 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Runtime data and uploads
+data/
+uploads/
+frontend/data/
+
+# Go build and test artifacts
+.cache/
+bin/
+*.exe
+*.test
+*.out
+coverage.out
+coverage.html
+
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/coverage/
+frontend/.cache/
+frontend/*.local
+
+# Logs and temporary files
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tmp
+*.temp
+
+# IDE and operating-system files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+Desktop.ini

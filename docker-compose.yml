@@ -1,0 +1,96 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ai_meeting_go
+      MYSQL_USER: ai_meeting
+      MYSQL_PASSWORD: ai_meeting
+      MYSQL_ROOT_PASSWORD: root
+    ports: ["3306:3306"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 5s
+      timeout: 3s
+      # First initialization can take more than two minutes on Windows bind/VM storage.
+      start_period: 180s
+      retries: 30
+  redis:
+    image: redis:7.2-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  migrate:
+    build:
+      context: .
+      args: { TARGET: migrate }
+    environment:
+      MYSQL_DSN: ${DOCKER_MYSQL_DSN:-ai_meeting:ai_meeting@tcp(mysql:3306)/ai_meeting_go?charset=utf8mb4&parseTime=True&loc=Local&multiStatements=true}
+    depends_on:
+      mysql: { condition: service_healthy }
+    restart: "no"
+  api:
+    build:
+      context: .
+      args: { TARGET: api }
+    environment:
+      GIN_MODE: release
+      MYSQL_DSN: ${DOCKER_MYSQL_DSN:-ai_meeting:ai_meeting@tcp(mysql:3306)/ai_meeting_go?charset=utf8mb4&parseTime=True&loc=Local}
+      REDIS_ADDR: ${DOCKER_REDIS_ADDR:-redis:6379}
+      JWT_SECRET: ${JWT_SECRET:-development-only-change-this-secret}
+      FILE_STORAGE_PATH: /app/data/uploads
+      LLM_MODE: ${LLM_MODE:-mock}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+      XINGCHEN_BASE_URL: ${XINGCHEN_BASE_URL:-https://xingchen-api.xf-yun.com}
+      XINGCHEN_QUESTION_API_KEY: ${XINGCHEN_QUESTION_API_KEY:-}
+      XINGCHEN_QUESTION_API_SECRET: ${XINGCHEN_QUESTION_API_SECRET:-}
+      XINGCHEN_QUESTION_FLOW_ID: ${XINGCHEN_QUESTION_FLOW_ID:-}
+      XINGCHEN_EVALUATION_API_KEY: ${XINGCHEN_EVALUATION_API_KEY:-}
+      XINGCHEN_EVALUATION_API_SECRET: ${XINGCHEN_EVALUATION_API_SECRET:-}
+      XINGCHEN_EVALUATION_FLOW_ID: ${XINGCHEN_EVALUATION_FLOW_ID:-}
+      XINGCHEN_ASKING_API_KEY: ${XINGCHEN_ASKING_API_KEY:-}
+      XINGCHEN_ASKING_API_SECRET: ${XINGCHEN_ASKING_API_SECRET:-}
+      XINGCHEN_ASKING_FLOW_ID: ${XINGCHEN_ASKING_FLOW_ID:-}
+    depends_on:
+      mysql: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    ports: ["8080:8080"]
+    volumes: ["uploads:/app/data/uploads"]
+  worker:
+    build:
+      context: .
+      args: { TARGET: worker }
+    environment:
+      MYSQL_DSN: ${DOCKER_MYSQL_DSN:-ai_meeting:ai_meeting@tcp(mysql:3306)/ai_meeting_go?charset=utf8mb4&parseTime=True&loc=Local}
+      REDIS_ADDR: ${DOCKER_REDIS_ADDR:-redis:6379}
+      JWT_SECRET: ${JWT_SECRET:-development-only-change-this-secret}
+      FILE_STORAGE_PATH: /app/data/uploads
+      LLM_MODE: ${LLM_MODE:-mock}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+      XINGCHEN_BASE_URL: ${XINGCHEN_BASE_URL:-https://xingchen-api.xf-yun.com}
+      XINGCHEN_QUESTION_API_KEY: ${XINGCHEN_QUESTION_API_KEY:-}
+      XINGCHEN_QUESTION_API_SECRET: ${XINGCHEN_QUESTION_API_SECRET:-}
+      XINGCHEN_QUESTION_FLOW_ID: ${XINGCHEN_QUESTION_FLOW_ID:-}
+      XINGCHEN_EVALUATION_API_KEY: ${XINGCHEN_EVALUATION_API_KEY:-}
+      XINGCHEN_EVALUATION_API_SECRET: ${XINGCHEN_EVALUATION_API_SECRET:-}
+      XINGCHEN_EVALUATION_FLOW_ID: ${XINGCHEN_EVALUATION_FLOW_ID:-}
+      XINGCHEN_ASKING_API_KEY: ${XINGCHEN_ASKING_API_KEY:-}
+      XINGCHEN_ASKING_API_SECRET: ${XINGCHEN_ASKING_API_SECRET:-}
+      XINGCHEN_ASKING_FLOW_ID: ${XINGCHEN_ASKING_FLOW_ID:-}
+    depends_on:
+      mysql: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    volumes: ["uploads:/app/data/uploads"]
+volumes:
+  mysql-data:
+  uploads:
