@@ -477,7 +477,4 @@ GET /api/v1/media/asr/ws?ticket={one-time-ticket}
 - [提交安全](docs/DO_NOT_COMMIT.md)：禁止提交文件和发布前检查清单。
 
 ## 安全与许可证
-
-真实密钥、`.env`、用户简历、运行数据、日志、缓存、`node_modules` 和 `dist` 均不应进入版本库，详见 [提交安全清单](docs/DO_NOT_COMMIT.md)。
-
-根工程当前未单独声明开源许可证。`frontend/LICENSE` 保留前端来源代码的 MIT 许可与原始版权信息；
+MIT 许可
