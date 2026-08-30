@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="frontend/public/xunzhi-mark.svg" width="88" alt="AI Meeting Logo" />
+<img src="frontend/public/favicon.svg" width="88" alt="AI Meeting Logo" />
 
 # AI Meeting ·
 
@@ -10,10 +10,10 @@
 
 ![Go](https://img.shields.io/badge/Go-1.24-00ADD8?logo=go&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?logo=typescript&logoColor=white)
 ![MySQL](https://img.shields.io/badge/MySQL-8.4-4479A1?logo=mysql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7.2-DC382D?logo=redis&logoColor=white)
-![Tests](https://img.shields.io/badge/Frontend_Tests-111_passed-brightgreen)
+![Tests](https://img.shields.io/badge/Frontend_Tests-11_passed-brightgreen)
 
 </div>
 
@@ -480,4 +480,4 @@ GET /api/v1/media/asr/ws?ticket={one-time-ticket}
 
 真实密钥、`.env`、用户简历、运行数据、日志、缓存、`node_modules` 和 `dist` 均不应进入版本库，详见 [提交安全清单](docs/DO_NOT_COMMIT.md)。
 
-根工程当前未单独声明开源许可证。`frontend/LICENSE` 保留前端来源代码的 MIT 许可与原始版权信息；
+根工程当前未单独声明开源许可证；

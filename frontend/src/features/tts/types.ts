@@ -1,11 +1,11 @@
-export type TtsSpeakOptions = {
-  lang?: string;
-  signal?: AbortSignal;
-};
+export type QuestionSpeechStatus = "idle" | "loading" | "playing" | "error";
 
-export interface TtsProvider {
-  isSupported(): boolean;
-  speak(text: string, options?: TtsSpeakOptions): Promise<void>;
-  stop(): void;
-  dispose(): void;
+export interface TtsTask {
+  taskId: string;
+  taskStatus: string;
+  code: number;
+  message?: string;
+  completed: boolean;
+  success: boolean;
+  audioPath: string;
 }
